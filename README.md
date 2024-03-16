@@ -412,3 +412,71 @@ public class StudentController {
     }
 }
 ````
+
+## Probando endpoints
+
+````bash
+$  curl -v http://localhost:8080/api/v1/students | jq
+
+>
+< HTTP/1.1 200
+<
+[
+  {
+    "id": 1,
+    "name": "Pro",
+    "email": "pro@knf.com",
+    "gender": "Male",
+    "age": 60
+  },
+  {...},
+  {...},
+  {...},
+  {...}
+]
+````
+
+````bash
+$ curl -v -G --data "age=5&gender=Male" http://localhost:8080/api/v1/students/with-age-and-gender | jq
+
+>
+< HTTP/1.1 200
+<
+[
+  {
+    "id": 7,
+    "name": "Noob2",
+    "email": "noob2@knf.com",
+    "gender": "Male",
+    "age": 5
+  },
+  {
+    "id": 8,
+    "name": "Noob3",
+    "email": "noob3@knf.com",
+    "gender": "Male",
+    "age": 5
+  }
+]
+````
+
+````bash
+$ curl -v -X POST -H "Content-Type: application/json" -d "{\"name\": \"Martin\", \"email\": \"martin@gmail.com\", \"gender\": \"Male\", \"age\": 35}" http://localhost:8080/api/v1/students | jq
+
+< HTTP/1.1 201
+<
+````
+
+````bash
+$ curl -v -X PUT -H "Content-Type: application/json" -d "{\"name\": \"Gaspar\", \"email\": \"gaspar@gmail.com\", \"gender\": \"Masculino\", \"age\": 30}" http://localhost:8080/api/v1/students/9 | jq
+
+>
+< HTTP/1.1 200
+<
+````
+
+````bash
+$ curl -v -X DELETE http://localhost:8080/api/v1/students/5| jq
+>
+< HTTP/1.1 204
+````
