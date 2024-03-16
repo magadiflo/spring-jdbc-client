@@ -120,3 +120,17 @@ VALUES('Pro', 'pro@knf.com', 60, 'Male'),
 ('Noob2', 'noob2@knf.com', 5, 'Male'),
 ('Noob3', 'noob3@knf.com', 5, 'Male');
 ````
+
+## Model - Student
+
+Crearemos nuestro modelo de estudiante usando un `record` de java:
+
+````java
+public record Student(
+        Long id,
+        String name,
+        String email,
+        String gender,
+        Integer age) {
+}
+````
