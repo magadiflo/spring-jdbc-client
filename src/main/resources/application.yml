@@ -1,3 +1,17 @@
+server:
+  port: 8080
+  error:
+    include-message: always
+
 spring:
   application:
     name: spring-jdbc-client
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/db_production
+    username: postgres
+    password: magadiflo
+
+  sql:
+    init:
+      mode: always
