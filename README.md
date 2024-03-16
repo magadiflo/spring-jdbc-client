@@ -134,3 +134,137 @@ public record Student(
         Integer age) {
 }
 ````
+
+## Creando StudentDAO y StudentDAOImpl
+
+````java
+public interface StudentDAO {
+    List<Student> findAllStudents();
+
+    List<Student> findStudentByAgeAndGender(Integer age, String gender);
+
+    List<Student> findStudentByGenderAndAgeGreaterThan(Integer age, String gender);
+
+    Optional<Student> findStudentById(Long id);
+
+    Integer insertStudent(Student student);
+
+    Integer updateStudent(Student student);
+
+    Integer deleteStudent(Long id);
+}
+````
+
+`JdbcClient` **se configura automáticamente para nosotros en Spring Boot.**
+En la clase siguiente vemos cómo `JdbcClient` es usado e inyectado en la clase de componente.
+
+Notemos que con `JdbcClient` estamos conectando objetos entre sí utilizando el encadenamiento de métodos para lograr
+legibilidad y usabilidad.
+
+````java
+
+@Repository
+public class StudentDAOImpl implements StudentDAO {
+
+    private final JdbcClient jdbcClient;
+
+    public StudentDAOImpl(JdbcClient jdbcClient) {
+        this.jdbcClient = jdbcClient;
+    }
+
+    @Override
+    public List<Student> findAllStudents() {
+        return this.jdbcClient.sql("""
+                        SELECT s.id, s.name, s.email, s.gender, s.age
+                        FROM students AS s
+                        """)
+                .query(Student.class) // Primera Forma, colocar directo la clase a la que queremos que se mapee
+                .list();
+    }
+
+    @Override
+    public List<Student> findStudentByAgeAndGender(Integer age, String gender) {
+        return this.jdbcClient.sql("""
+                        SELECT s.id, s.name, s.email, s.gender, s.age
+                        FROM students AS s
+                        WHERE s.age = :age AND s.gender = :gender
+                        """)
+                .param("age", age)
+                .param("gender", gender)
+                .query(new StudentRowMapper()) // Segunda Forma, seremos nosotros los que haremos el mapeo a través de la clase StudentRowMapper 
+                .list();
+    }
+
+    @Override
+    public List<Student> findStudentByGenderAndAgeGreaterThan(Integer age, String gender) {
+        return this.jdbcClient.sql("""
+                        SELECT s.id, s.name, s.email, s.gender, s.age
+                        FROM students AS s
+                        WHERE s.age > :age AND s.gender = :gender
+                        """)
+                .param("age", age)
+                .param("gender", gender)
+                .query(new StudentRowMapper())
+                .list();
+    }
+
+    @Override
+    public Optional<Student> findStudentById(Long id) {
+        return this.jdbcClient.sql("""
+                        SELECT s.id, s.name, s.email, s.gender, s.age
+                        FROM students AS s
+                        WHERE s.id = :id
+                        """)
+                .param("id", id)
+                .query(Student.class)
+                .optional();
+    }
+
+    @Override
+    public Integer insertStudent(Student student) {
+        return this.jdbcClient.sql("""
+                        INSERT INTO students(name, email, gender, age)
+                        VALUES(:name, :email, :gender, :age)
+                        """)
+                .param("name", student.name(), Types.VARCHAR)
+                .param("email", student.email(), Types.VARCHAR)
+                .param("gender", student.gender(), Types.VARCHAR)
+                .param("age", student.age(), Types.INTEGER)
+                .update();
+    }
+
+    @Override
+    public Integer updateStudent(Student student) {
+        return this.jdbcClient.sql("""
+                        UPDATE students
+                        SET name = :name, email = :email, gender = :gender, age = :age
+                        WHERE id = :id
+                        """)
+                .param("name", student.name())
+                .param("email", student.email())
+                .param("gender", student.gender())
+                .param("age", student.age())
+                .param("id", student.id())
+                .update();
+    }
+
+    @Override
+    public Integer deleteStudent(Long id) {
+        return this.jdbcClient.sql("DELETE FROM students WHERE id = :id")
+                .param("id", id)
+                .update();
+    }
+
+    static class StudentRowMapper implements RowMapper<Student> {
+        @Override
+        public Student mapRow(ResultSet rs, int rowNum) throws SQLException {
+            return new Student(
+                    rs.getLong("id"),
+                    rs.getString("name"),
+                    rs.getString("email"),
+                    rs.getString("gender"),
+                    rs.getInt("age"));
+        }
+    }
+}
+````
