@@ -88,7 +88,15 @@ spring:
   sql:
     init:
       mode: always
+
+logging:
+  level:
+    org.springframework.test.context.jdbc: DEBUG
+    org.springframework.jdbc.datasource.init: DEBUG
 ````
+
+Para ver qué `scripts SQL` se está ejecutando configuramos: `logging.level.org.springframework.test.context.jdbc=DEBUG`
+y para ver qué `sentencias SQL` se están ejecutando `logging.level.org.springframework.jdbc.datasource.init=DEBUG`.
 
 ## Creando el schema.sql y data.sql
 
@@ -480,3 +488,217 @@ $ curl -v -X DELETE http://localhost:8080/api/v1/students/5| jq
 >
 < HTTP/1.1 204
 ````
+
+---
+
+# Implementando Tests
+
+---
+
+Para ejecutar el test, debemos tener instalado `Docker` en nuestra máquina local.
+
+## Script test-student-data.sql
+
+Antes de empezar a crear la clase de `test` para nuestro `StudentDAOImpl` vamos a crear en el directorio de test
+`src/test/resources/test-student-data.sql` el script que usaremos para realizar nuestras pruebas:
+
+````sql
+TRUNCATE TABLE students RESTART IDENTITY;
+
+INSERT INTO students(name, email, age, gender)
+VALUES('Juan Pérez', 'juan@gmail.com', 30, 'Masculino'),
+('María García', 'maria@gmail.com', 25, 'Femenino'),
+('Carlos López', 'carlos@gmail.com', 32, 'Masculino'),
+('Laura Martínez', 'laura@gmail.com', 28, 'Femenino'),
+('Pedro Rodríguez', 'pedro@gmail.com', 32, 'Masculino'),
+('Ana Gómez', 'ana@gmail.com', 29, 'Femenino'),
+('Luis Fernández', 'luis@gmail.com', 31, 'Masculino'),
+('Elena Sánchez', 'elena@gmail.com', 27, 'Femenino'),
+('Miguel González', 'miguel@gmail.com', 32, 'Masculino'),
+('Sofía Díaz', 'sofia@gmail.com', 26, 'Femenino'),
+('Carla Díaz', 'carla.diaz@gmail.com', 35, 'Femenino'),
+('Melissa Díaz', 'melissa.diaz@gmail.com', 28, 'Femenino'),
+('María Díaz', 'maria.diaz@gmail.com', 29, 'Femenino'),
+('Milagros Díaz', 'milagros.diaz@gmail.com', 32, 'Femenino');
+````
+
+**NOTA**
+
+El script `test-student-data.sql` solo lo usamos para las pruebas, mientras que el `data.sql` lo estamos usando para
+ejecutar la aplicación real, es decir, como si fueran datos en producción.
+
+## Creando StudentDAOImplTest
+
+La anotación `@JdbcTest` es una anotación para una prueba `JDBC` que se centra únicamente en componentes basados
+en `JDBC`. **El uso de esta anotación deshabilitará la configuración automática completa y, en su lugar, aplicará solo
+la configuración relevante para las pruebas JDBC.**
+
+De forma predeterminada, las pruebas anotadas con `@JdbcTest` **son transaccionales y se revierten al final de cada
+prueba.** También utilizan una base de datos integrada en memoria **(que reemplaza cualquier fuente de datos explícita
+o generalmente configurada automáticamente).** La anotación `@AutoConfigureTestDatabase` se puede utilizar para anular
+estas configuraciones.
+
+`@Testcontainers` es una extensión de `JUnit Jupiter` para activar el inicio y la parada automáticos de los contenedores
+utilizados en un caso de prueba.
+La extensión `@Testcontainers` encuentra todos los campos anotados con `@Container` y llama a sus métodos de ciclo de
+vida de contenedor. Los contenedores declarados como campos estáticos se compartirán entre los métodos de prueba. Se
+iniciarán solo una vez antes de ejecutar cualquier método de prueba y se detendrán después de que se haya ejecutado el
+último método de prueba. Los contenedores declarados como campos de instancia se iniciarán y detendrán para cada método
+de prueba.
+
+`@Sql` se utiliza para anotar una clase de prueba o un método de prueba para configurar scripts y declaraciones SQL que
+se ejecutarán en una base de datos determinada durante las pruebas de integración.
+
+````java
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+
+@Testcontainers
+@Sql(scripts = {"/test-student-data.sql"})
+@JdbcTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+class StudentDAOImplTest {
+
+    private static final Logger LOG = LoggerFactory.getLogger(StudentServiceImpl.class);
+
+    @Container
+    @ServiceConnection
+    private static final PostgreSQLContainer<?> POSTGRES_CONTAINER = new PostgreSQLContainer<>("postgres:15.2-alpine");
+
+    @Autowired
+    private JdbcClient jdbcClient;
+    private StudentDAOImpl studentDAO;
+
+    @BeforeEach
+    void setUp() {
+        this.studentDAO = new StudentDAOImpl(this.jdbcClient);
+    }
+
+    @Test
+    void shouldSaveTheStudentAndReturnsTheInteger() {
+        // Given
+        Student student = new Student(null, "Martín", "martin@gmail.com", "Masculino", 35);
+
+        // When
+        Integer affectedRows = this.studentDAO.insertStudent(student);
+
+        // Then
+        assertThat(affectedRows).isEqualTo(1);
+    }
+
+    @Test
+    void shouldUpdateTheStudentAndReturnsTheInteger() {
+        // Given
+        Long studentId = 1L;
+        Student student = new Student(studentId, "Martín", "martin@gmail.com", "Masculino", 35);
+
+        Optional<Student> optionalStudentBeforeUpdating = this.studentDAO.findStudentById(studentId);
+        Student studentBefore = optionalStudentBeforeUpdating.get();
+
+        assertThat(studentBefore).isNotNull();
+        LOG.info("beforeUpdating: {}", studentBefore);
+
+        // When
+        Integer affectedRows = this.studentDAO.updateStudent(student);
+
+        // Then
+        assertThat(affectedRows).isEqualTo(1);
+
+        Optional<Student> optionalStudentAfterUpdating = this.studentDAO.findStudentById(studentId);
+        Student studentAfter = optionalStudentAfterUpdating.get();
+
+        assertThat(studentAfter).isNotNull();
+        assertThat(studentAfter.name()).isEqualTo(student.name());
+        assertThat(studentAfter.email()).isEqualTo(student.email());
+        assertThat(studentAfter.gender()).isEqualTo(student.gender());
+        assertThat(studentAfter.age()).isEqualTo(student.age());
+        LOG.info("afterUpdating: {}", studentAfter);
+    }
+
+    @Test
+    void shouldDeleteStudentAndReturnsTheInteger() {
+        // Given
+        Long studentId = 1L;
+
+        // When
+        Integer affectedRows = this.studentDAO.deleteStudent(studentId);
+
+        // Then
+        assertThat(affectedRows).isEqualTo(1);
+        Optional<Student> optionalStudent = this.studentDAO.findStudentById(studentId);
+        assertThat(optionalStudent.isEmpty()).isTrue();
+    }
+
+    @Test
+    void shouldFindStudentByIdAndReturnsTheStudent() {
+        // Given
+        Long studentId = 1L;
+
+        // When
+        Student studentDB = this.studentDAO.findStudentById(studentId).get();
+
+        // Then
+        assertThat(studentDB).isNotNull();
+        assertThat(studentDB.id()).isEqualTo(studentId);
+        assertThat(studentDB.name()).isEqualTo("Juan Pérez");
+        assertThat(studentDB.email()).isEqualTo("juan@gmail.com");
+        assertThat(studentDB.age()).isEqualTo(30);
+        assertThat(studentDB.gender()).isEqualTo("Masculino");
+    }
+
+    @Test
+    void shouldFindAllStudents() {
+        // Given
+
+        // When
+        List<Student> students = this.studentDAO.findAllStudents();
+
+        // Then
+        assertThat(students.size()).isEqualTo(14);
+    }
+
+    @Test
+    void shouldFindStudentByAgeAndGenderAndReturnsTheListStudents() {
+        // Given
+
+        // When
+        List<Student> students = this.studentDAO.findStudentByAgeAndGender(32, "Masculino");
+
+        // Then
+        List<Long> ids = students.stream()
+                .map(Student::id)
+                .toList();
+
+        assertThat(ids.size()).isEqualTo(3);
+        assertThat(ids).isEqualTo(List.of(3L, 5L, 9L));
+
+        assertThat(students.getFirst().id()).isEqualTo(3);
+        assertThat(students.getFirst().name()).isEqualTo("Carlos López");
+        assertThat(students.getFirst().email()).isEqualTo("carlos@gmail.com");
+        assertThat(students.getFirst().age()).isEqualTo(32);
+        assertThat(students.getFirst().gender()).isEqualTo("Masculino");
+    }
+
+    @Test
+    void shouldFindStudentByGenderAndAgeGreaterThanAndReturnsTheListStudents() {
+        // Given
+
+        // When
+        List<Student> students = this.studentDAO.findStudentByGenderAndAgeGreaterThan(30, "Femenino");
+
+        // Then
+        List<Long> ids = students.stream()
+                .map(Student::id)
+                .toList();
+
+        assertThat(ids.size()).isEqualTo(2);
+        assertThat(ids).isEqualTo(List.of(11L, 14L));
+    }
+}
+````
+
+## Ejecutando Tests
+
+Dado que utilizamos `Testcontainers`, asegúrese de iniciar `Docker` en su máquina local. Después de eso, ejecute la
+prueba.
+
+![02.run-tests.png](./assets/02.run-tests.png)
